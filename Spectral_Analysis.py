@@ -11,37 +11,33 @@ class Spectra:
     """ 
     For analyzing spectrum of image data with zstacks 
     """
-    def __init__(self, raw_data_filename, unmixed_filename, bin_size, Num_pixels, Num_CH, Num_zstack, organelle1, organelle2, start_nm):
+    def __init__(self, raw_data_filename, unmixed_filename, bin_size, Num_pixels, Num_CH, zstack_ind, organelle1, organelle2, start_nm):
         self.raw_data_filename = raw_data_filename
         self.unmixed_filename = unmixed_filename
         self.bin_size = bin_size
         self.Num_pixels = Num_pixels
         self.Num_CH = Num_CH
-        self.Num_zstack = Num_zstack
+        self.zstack_ind = zstack_ind
         self.organelle1 = organelle1
         self.organelle2 = organelle2
         self.start_nm = start_nm
 
         # Load raw data
-        self.Raw_data = np.empty([self.Num_zstack, self.Num_pixels, self.Num_pixels, self.Num_CH])
-        image_temp = bioformats.load_image(
+        self.Raw_data = bioformats.load_image(
             path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.raw_data_filename}.nd2',
             c=None,
             rescale=False
         )
-        self.Raw_data[: ,:, :, :] = image_temp
         
         if self.unmixed_filename == False:
             pass
         else:
             # Load unmixed data
-            self.Unmixed_data = np.empty([self.Num_zstack, self.Num_pixels, self.Num_pixels, 2])
-            image_temp = bioformats.load_image(
+            self.Unmixed_data = bioformats.load_image(
                 path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.unmixed_filename}.nd2',
                 c=None,
                 rescale=False
             )
-            self.Unmixed_data[:, :, :, :] = image_temp
             
         # x-axis for the spectrum later on
         self.xaxis = [f'{a+1} ({self.start_nm + self.bin_size * a})' for a in range(self.Num_CH)]
@@ -127,36 +123,52 @@ class Spectra:
         return plt, indx_pixorg1, indx_pixorg2
 
     # Generate spectrum plot of chosen pixels
-    def generate_normSpectrum(self, indx_pixorg, Num_CHtocombi, zstack_ind):
+    def generate_normSpectrum(self, indx_pixorg, Num_CHtocombi, withIinfo, zstack_ind):
         if Num_CHtocombi == 0: # if you don't combine CHs
             values = []
-            area_under_curve_list = []
-            values_norm_Iinfo_list = []
-            for ind in range(len(indx_pixorg[0])):
+
+            if withIinfo == True:
+                area_under_curve_list = []
+                values_norm_Iinfo_list = []
+                for ind in range(len(indx_pixorg[0])):
+                    values_along_CH = self.Raw_data[zstack_ind, indx_pixorg[0][ind], indx_pixorg[1][ind], :]
+                    # Calculate the definite integral of the curve
+                    area_under_curve = simps(values_along_CH, self.xvalues_nm)
+                    # Normalize the curve by dividing each data point by the area under the curve
+                    norm_values_along_CH = values_along_CH / area_under_curve
+                    values.append(norm_values_along_CH)
+                    area_under_curve_list.append(area_under_curve)
+
+                # Calculating mean area under the curve to recover I info
+                meanI = np.mean(area_under_curve_list, axis=0)
+
+                # Recover I info
+                for ind in range(len(values)):
+                    values_norm_Iinfo = values[ind]*meanI
+                    values_norm_Iinfo_list.append(values_norm_Iinfo)
+
+                    plt.plot(self.xaxis, values_norm_Iinfo, color='gray', marker='o')
+                    plt.xticks(self.xaxis, rotation=90)
+                    plt.xlabel(r'CH # ($\lambda$ in nm)')
+
+                # Calculating mean and std
+                mean = np.mean(values_norm_Iinfo_list, axis=0)
+                std = np.std(values_norm_Iinfo_list, axis=0, ddof=1)
+            else: 
                 values_along_CH = self.Raw_data[zstack_ind, indx_pixorg[0][ind], indx_pixorg[1][ind], :]
-                # Calculate the definite integral of the curve
                 area_under_curve = simps(values_along_CH, self.xvalues_nm)
-                # Normalize the curve by dividing each data point by the area under the curve
                 norm_values_along_CH = values_along_CH / area_under_curve
                 values.append(norm_values_along_CH)
-                area_under_curve_list.append(area_under_curve)
-
-            # Calculating mean and std
-            meanI = np.mean(area_under_curve_list, axis=0)
-
-            # Retain intensity profile comparisons
-            for ind in range(len(values)):
-                values_norm_Iinfo = values[ind]*meanI
-                values_norm_Iinfo_list.append(values_norm_Iinfo)
 
                 plt.plot(self.xaxis, values_norm_Iinfo, color='gray', marker='o')
                 plt.xticks(self.xaxis, rotation=90)
                 plt.xlabel(r'CH # ($\lambda$ in nm)')
 
-            # Plotting mean and std
-            mean = np.mean(values_norm_Iinfo_list, axis=0)
-            std = np.std(values_norm_Iinfo_list, axis=0, ddof=1)
+                # Calculating mean and std
+                mean = np.mean(values, axis=0)
+                std = np.std(values, axis=0, ddof=1)
 
+            # Plotting mean and std
             plt.plot(self.xaxis, mean, color='#CC4F1B', marker='o',label='Mean')
             plt.fill_between(self.xaxis, mean-std, mean+std,
                 alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848',label='Std')
