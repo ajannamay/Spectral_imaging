@@ -9,7 +9,7 @@ javabridge.start_vm(class_path=bioformats.JARS)
 
 class Spectra:
     """ 
-    For analyzing spectrum of image data with zstacks 
+    For analyzing spectrum of image data
     """
     def __init__(self, raw_data_filename, unmixed_filename, bin_size, Num_pixels, Num_CH, zstack_ind, organelle1, organelle2, start_nm):
         self.raw_data_filename = raw_data_filename
