@@ -164,7 +164,7 @@ class Spectra:
                     values_norm_Iinfo = values[ind]*meanI
                     values_norm_Iinfo_list.append(values_norm_Iinfo)
 
-                    plt.plot(self.xaxis, values_norm_Iinfo, color='gray', marker='o')
+                    plt.plot(self.xaxis, values_norm_Iinfo, color='gray', alpha=0.3, marker='o')
                     plt.xticks(self.xaxis, rotation=90)
                     plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -178,7 +178,7 @@ class Spectra:
                     norm_values_along_CH = values_along_CH / area_under_curve
                     values.append(norm_values_along_CH)
 
-                    plt.plot(self.xaxis, norm_values_along_CH, color='gray', marker='o')
+                    plt.plot(self.xaxis, norm_values_along_CH, color='gray', alpha=0.5, marker='o')
                     plt.xticks(self.xaxis, rotation=90)
                     plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -187,9 +187,9 @@ class Spectra:
                 std = np.std(values, axis=0, ddof=1)
 
             # Plotting mean and std
-            plt.plot(self.xaxis, mean, color='#CC4F1B', marker='o',label='Mean')
+            plt.plot(self.xaxis, mean, marker='o',label='Mean')
             plt.fill_between(self.xaxis, mean-std, mean+std,
-                alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848',label='Std')
+                alpha=0.5,label='Std')
         else:
             values = []
             for ind in range(len(indx_pixorg[0])):
@@ -213,7 +213,7 @@ class Spectra:
                 # xvalues of combined CHs
                 combi_xvalues = [f'{combi_CH[a][0]}-{combi_CH[a][-1]} ({combi_xvalues_nm[a]})' for a in range(len(combi_xvalues_nm))]
 
-                plt.plot(combi_xvalues, norm_consecutive_means, color='gray', marker='o')
+                plt.plot(combi_xvalues, norm_consecutive_means, color='gray', alpha=0.5, marker='o')
                 plt.xticks(rotation=90)
                 plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -221,9 +221,9 @@ class Spectra:
             mean = np.mean(values, axis=0)
             std = np.std(values, axis=0, ddof=1)
 
-            plt.plot(combi_xvalues, mean, color='#CC4F1B', marker='o',label='Mean')
+            plt.plot(combi_xvalues, mean, marker='o',label='Mean')
             plt.fill_between(combi_xvalues, mean-std, mean+std,
-                alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848',label='Std')
+                alpha=0.5, label='Std')
         
         # Other plot features
         plt.ylim(bottom=0)
