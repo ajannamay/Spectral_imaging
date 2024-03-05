@@ -25,7 +25,7 @@ class Spectra:
         if self.zstack_ind == 0:
             # Load raw data
             self.Raw_data = bioformats.load_image(
-                path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.raw_data_filename}.nd2',
+                path=f'{self.raw_data_filename}.nd2',
                 c=None,
                 rescale=False)
             
@@ -34,7 +34,7 @@ class Spectra:
                 pass
             else:
                 self.Unmixed_data = bioformats.load_image(
-                    path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.unmixed_filename}.nd2',
+                    path=f'{self.unmixed_filename}.nd2',
                     c=None,
                     rescale=False)
                 # Specify array of organelle
@@ -44,7 +44,7 @@ class Spectra:
         else:
             # Load raw data
             self.Raw_data = bioformats.load_image(
-                path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.raw_data_filename}.nd2',
+                path=f'{self.raw_data_filename}.nd2',
                 c=None,
                 z=zstack_ind-1,
                 rescale=False)
@@ -54,7 +54,7 @@ class Spectra:
                 pass
             else:
                 self.Unmixed_data = bioformats.load_image(
-                    path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.unmixed_filename}.nd2',
+                    path=f'{self.unmixed_filename}.nd2',
                     c=None,
                     z=zstack_ind-1,
                     rescale=False)
