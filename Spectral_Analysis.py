@@ -37,6 +37,9 @@ class Spectra:
                     path=f'C:\\Users\\admin\\OneDrive - Washington University in St. Louis\\PhD\\Research\\Biophys\\image_data\\{self.unmixed_filename}.nd2',
                     c=None,
                     rescale=False)
+                # Specify array of organelle
+                self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
+                self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
                 
         else:
             # Load raw data
@@ -55,11 +58,10 @@ class Spectra:
                     c=None,
                     z=zstack_ind-1,
                     rescale=False)
+                # Specify array of organelle
+                self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
+                self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
                 
-        # Specify array of organelle
-        self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
-        self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
-            
         # x-axis for the spectrum later on
         self.xaxis = [f'{a+1} ({self.start_nm + self.bin_size * a})' for a in range(self.Num_CH)]
         self.xvalues = np.array([a+1 for a in range(self.Num_CH)])
@@ -136,7 +138,32 @@ class Spectra:
         plt.xlabel(f'Pixel intensity ({self.organelle2})')
 
         return plt, indx_pixorg1, indx_pixorg2
+    
 
+    def remove_saturated_pix(self):
+        # Location of saturated pixels
+        ind_saturated = np.where(self.Raw_data >= 4050)
+        # Mask for the saturated pixels
+        mask_saturated =  np.ones(self.Raw_data[:,:,0].shape)
+        # Set saturated to zero across all channels
+        mask_saturated[ind_saturated[0],ind_saturated[1]] = 0
+        processed_matrix = self.Raw_data*mask_saturated[:,:,np.newaxis]
+        return processed_matrix
+
+    # Pick specific number of brightest pixels in single organelle image
+    def generate_indx_select_pix(self,Num_toppixels):
+        # Ignore saturated pixels
+        filtered_data = self.remove_saturated_pix()
+        # Calc. ave intensity across CHs
+        mean_Raw_data = np.round(np.mean(filtered_data, axis=-1), decimals=2)
+        # print(mean_Raw_data)
+        # Sort the result array in increasing order
+        sorted_result = np.sort(mean_Raw_data.flatten())
+        # Get the top pixels from the sorted result w/o saturated pixels
+        top_numbers = sorted_result[-Num_toppixels:]
+        # print(top_numbers)
+        indices = np.where(mean_Raw_data >= np.min(top_numbers))
+        return indices
 
 
     # Generate spectrum plot of chosen pixels
@@ -159,7 +186,7 @@ class Spectra:
                 # Calculating mean area under the curve to recover I info
                 meanI = np.mean(area_under_curve_list, axis=0)
 
-                # Recover I info
+                # Recover I info with respect to the mean
                 for ind in range(len(values)):
                     values_norm_Iinfo = values[ind]*meanI
                     values_norm_Iinfo_list.append(values_norm_Iinfo)
