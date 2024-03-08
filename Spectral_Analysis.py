@@ -4,6 +4,7 @@ import bioformats
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import simps
+from PIL import Image
 
 javabridge.start_vm(class_path=bioformats.JARS)
 
@@ -67,6 +68,13 @@ class Spectra:
         self.xvalues = np.array([a+1 for a in range(self.Num_CH)])
         self.xvalues_nm = np.array([self.start_nm + self.bin_size * a for a in range(self.Num_CH)])
     
+    #
+    def pix_mask(self,mask_filename):
+        mask = Image.open(f'{mask_filename}.tif')
+        mask = np.asarray(mask)
+        mask_indx = np.where(mask > 0)
+        return mask_indx
+        
     # Generate scatter plot
     def generate_scatter_plot(self, saturated_pix, Num_toppixels):
         def select_pix(array1, array2):
@@ -129,9 +137,9 @@ class Spectra:
 
             # Highlight the selected point
             plt.scatter(self.arr_organelle2[indx_pixorg1], self.arr_organelle1[indx_pixorg1], color='red',
-                        label=f'${self.organelle2} = 0, {self.organelle1} \geq {np.min(indx_pixorg1)}$')
+                        label=f'${self.organelle2} = 0, {self.organelle1} \geq {np.min(organelle1_pix)}$')
             plt.scatter(self.arr_organelle2[indx_pixorg2], self.arr_organelle1[indx_pixorg2], color='green',
-                        label=f'${self.organelle2} \geq {np.min(indx_pixorg2)}, {self.organelle1} = 0$')
+                        label=f'${self.organelle2} \geq {np.min(organelle2_pix)}, {self.organelle1} = 0$')
 
         # Add labels and title
         plt.ylabel(f'Pixel intensity ({self.organelle1})')
@@ -156,18 +164,16 @@ class Spectra:
         filtered_data = self.remove_saturated_pix()
         # Calc. ave intensity across CHs
         mean_Raw_data = np.round(np.mean(filtered_data, axis=-1), decimals=2)
-        # print(mean_Raw_data)
         # Sort the result array in increasing order
         sorted_result = np.sort(mean_Raw_data.flatten())
         # Get the top pixels from the sorted result w/o saturated pixels
         top_numbers = sorted_result[-Num_toppixels:]
-        # print(top_numbers)
         indices = np.where(mean_Raw_data >= np.min(top_numbers))
         return indices
 
 
     # Generate spectrum plot of chosen pixels
-    def generate_normSpectrum(self, indx_pixorg, Num_CHtocombi, withIinfo):
+    def generate_normSpectrum(self, indx_pixorg, Num_CHtocombi, withIinfo, Label):
         if Num_CHtocombi == 0: # if you don't combine CHs
             values = []
 
@@ -191,7 +197,7 @@ class Spectra:
                     values_norm_Iinfo = values[ind]*meanI
                     values_norm_Iinfo_list.append(values_norm_Iinfo)
 
-                    plt.plot(self.xaxis, values_norm_Iinfo, color='gray', alpha=0.3, marker='o')
+                    plt.plot(self.xaxis, values_norm_Iinfo, color='gray', alpha=0.07, marker='o')
                     plt.xticks(self.xaxis, rotation=90)
                     plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -205,7 +211,7 @@ class Spectra:
                     norm_values_along_CH = values_along_CH / area_under_curve
                     values.append(norm_values_along_CH)
 
-                    plt.plot(self.xaxis, norm_values_along_CH, color='gray', alpha=0.5, marker='o')
+                    plt.plot(self.xaxis, norm_values_along_CH, color='gray', alpha=0.07, marker='o')
                     plt.xticks(self.xaxis, rotation=90)
                     plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -214,9 +220,10 @@ class Spectra:
                 std = np.std(values, axis=0, ddof=1)
 
             # Plotting mean and std
-            plt.plot(self.xaxis, mean, marker='o',label='Mean')
+            plt.plot(self.xaxis, mean, marker='o',label=f'{Label} (Mean)')
             plt.fill_between(self.xaxis, mean-std, mean+std,
-                alpha=0.5,label='Std')
+                alpha=0.7,label='Std')
+            
         else:
             values = []
             for ind in range(len(indx_pixorg[0])):
@@ -240,7 +247,7 @@ class Spectra:
                 # xvalues of combined CHs
                 combi_xvalues = [f'{combi_CH[a][0]}-{combi_CH[a][-1]} ({combi_xvalues_nm[a]})' for a in range(len(combi_xvalues_nm))]
 
-                plt.plot(combi_xvalues, norm_consecutive_means, color='gray', alpha=0.5, marker='o')
+                plt.plot(combi_xvalues, norm_consecutive_means, color='gray', alpha=0.07, marker='o')
                 plt.xticks(rotation=90)
                 plt.xlabel(r'CH # ($\lambda$ in nm)')
 
@@ -248,9 +255,9 @@ class Spectra:
             mean = np.mean(values, axis=0)
             std = np.std(values, axis=0, ddof=1)
 
-            plt.plot(combi_xvalues, mean, marker='o',label='Mean')
+            plt.plot(combi_xvalues, mean, marker='o',label=f'{Label} (Mean)')
             plt.fill_between(combi_xvalues, mean-std, mean+std,
-                alpha=0.5, label='Std')
+                alpha=0.7, label='Std')
         
         # Other plot features
         plt.ylim(bottom=0)
