@@ -284,30 +284,39 @@ class Spectra:
         return plt, mean
     
     # ------------------------------------------------------------------------
-    def spectrum_indiv_pixel_sep(self, indx_top10org):
+    def spectrum_indiv_pixel_sep(self, indx_pix):
         """ 
         Plot raw spectra of pixels separately
         """
-        # Assuming indices1 is a tuple of arrays
-        num_plots = len(indx_top10org[0])
+        # Assuming indx_pix is a tuple of arrays
+        num_plots = len(indx_pix[0])
+        plots_per_column = 10
+        num_columns = (num_plots + plots_per_column - 1) // plots_per_column  # Ceiling division to get number of columns
 
         # Create subplots
-        fig, axs = plt.subplots(num_plots, 1, figsize=(8, 1.5 * num_plots), sharex=True, sharey=True)
+        fig, axs = plt.subplots(plots_per_column, num_columns, figsize=(5*num_columns, 1.5 * plots_per_column), sharex=True, sharey=True)
 
-        for ind, ax in enumerate(axs):
-            values_along_CH = self.Raw_data[indx_top10org[0][ind], indx_top10org[1][ind], :]
+        for col in range(num_columns):
+            for row in range(plots_per_column):
+                plot_index = col * plots_per_column + row
+                if plot_index >= num_plots:
+                    break
 
-            # Plot values along CH
-            ax.plot(self.xaxis, values_along_CH, marker='o')
-            ax.set_xticks(self.xaxis)
-            ax.set_xticklabels(self.xaxis, rotation=90)
+                values_along_CH = self.Raw_data[indx_pix[0][plot_index], indx_pix[1][plot_index], :]
+                axs[row, col].plot(self.xaxis, values_along_CH, marker='o')
+                if row == plots_per_column - 1:
+                    axs[row, col].set_xticks(self.xaxis)
+                    axs[row, col].set_xticklabels(self.xaxis, rotation=90)
+                else:
+                    axs[row, col].set_xticks(self.xaxis)
+                    axs[row, col].set_xticklabels([])  # Remove tick labels for non-last rows
 
-        fig.supylabel('Pixel intensity')
-        fig.supxlabel(r'CH # ($\lambda$ in nm)')
+        # fig.supylabel('Pixel intensity')
+        # fig.supxlabel(r'CH # ($\lambda$ in nm)')
         # Adjust layout to prevent overlapping
         plt.tight_layout()
 
-        return fig
+        return plt
     
     # ------------------------------------------------------------------------
     def calc_ratio_peaks(self,values,min1,max1,min2,max2):
@@ -327,7 +336,7 @@ class Spectra:
             test_org1 = self.calc_ratio_peaks(values,min1,max1,min2,max2)
             test_org2 = self.calc_ratio_peaks(values,min2,max2,min1,max1)
             # if  0.95 <= test_org1  and  test_org1 <= 1.05 and 0.95 <= test_org2  and test_org2 <= 1.05:
-            if test_org1 <= 1.05 and test_org2 <= 1.05:
+            if test_org1 <= 1.15 and test_org2 <= 1.15:
                 return True
             else:
                 return False
