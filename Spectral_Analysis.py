@@ -336,7 +336,7 @@ class Spectra:
             test_org1 = self.calc_ratio_peaks(values,min1,max1,min2,max2)
             test_org2 = self.calc_ratio_peaks(values,min2,max2,min1,max1)
             # if  0.95 <= test_org1  and  test_org1 <= 1.05 and 0.95 <= test_org2  and test_org2 <= 1.05:
-            if test_org1 <= 1.15 and test_org2 <= 1.15:
+            if test_org1 <= 1.4 and test_org2 <= 1.4:
                 return True
             else:
                 return False
