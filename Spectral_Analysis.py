@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import simps
 from PIL import Image
+import matplotlib.patches as patches
 
 javabridge.start_vm(class_path=bioformats.JARS)
 
@@ -19,8 +20,8 @@ class Spectra:
         self.Num_pixels = Num_pixels
         self.Num_CH = Num_CH
         self.zstack_ind = zstack_ind
-        self.organelle1 = organelle1
-        self.organelle2 = organelle2
+        self.organelle1 = organelle1  # 1st CH in unmixed image
+        self.organelle2 = organelle2  # 2nd CH in unmixed image
         self.start_nm = start_nm
 
         if self.zstack_ind == 0:
@@ -29,7 +30,6 @@ class Spectra:
                 path=f'{self.raw_data_filename}.nd2',
                 c=None,
                 rescale=False)
-            
             # Load unmixed data (if needed)
             if self.unmixed_filename == False:
                 pass
@@ -41,7 +41,6 @@ class Spectra:
                 # Specify array of organelle
                 self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
                 self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
-                
         else:
             # Load raw data
             self.Raw_data = bioformats.load_image(
@@ -49,7 +48,6 @@ class Spectra:
                 c=None,
                 z=zstack_ind-1,
                 rescale=False)
-            
             # Load unmixed data (if needed)
             if self.unmixed_filename == False:
                 pass
@@ -68,15 +66,21 @@ class Spectra:
         self.xvalues = np.array([a+1 for a in range(self.Num_CH)])
         self.xvalues_nm = np.array([self.start_nm + self.bin_size * a for a in range(self.Num_CH)])
     
-    #
-    def pix_mask(self,mask_filename):
+    # ------------------------------------------------------------------------
+    def pix_mask_ImageJ(self,mask_filename):
+        """ 
+        Obtain pix from mask created in ImageJ
+        """
         mask = Image.open(f'{mask_filename}.tif')
         mask = np.asarray(mask)
         mask_indx = np.where(mask > 0)
         return mask_indx
         
-    # Generate scatter plot
+    # ------------------------------------------------------------------------
     def generate_scatter_plot(self, saturated_pix, Num_toppixels):
+        """ 
+        Generate scatter plot from unmixed data
+        """
         def select_pix(array1, array2):
             # Create a boolean mask where the condition is true for elements in array2 equal to 0
             mask = (array2 == 0)
@@ -147,8 +151,11 @@ class Spectra:
 
         return plt, indx_pixorg1, indx_pixorg2
     
-
+    # ------------------------------------------------------------------------
     def remove_saturated_pix(self):
+        """ 
+        Create mask to set intensity values of saturated pixels to zero
+        """
         # Location of saturated pixels
         ind_saturated = np.where(self.Raw_data >= 4050)
         # Mask for the saturated pixels
@@ -158,8 +165,11 @@ class Spectra:
         processed_matrix = self.Raw_data*mask_saturated[:,:,np.newaxis]
         return processed_matrix
 
-    # Pick specific number of brightest pixels in single organelle image
+    # ------------------------------------------------------------------------
     def generate_indx_select_pix(self,Num_toppixels):
+        """ 
+        Pick specific number of brightest pixels in single organelle image
+        """
         # Ignore saturated pixels
         filtered_data = self.remove_saturated_pix()
         # Calc. ave intensity across CHs
@@ -172,8 +182,11 @@ class Spectra:
         return indices
 
 
-    # Generate spectrum plot of chosen pixels
+    # ------------------------------------------------------------------------
     def generate_normSpectrum(self, indx_pixorg, Num_CHtocombi, withIinfo, Label):
+        """ 
+        Generate spectrum plot of chosen pixels in one plot
+        """
         if Num_CHtocombi == 0: # if you don't combine CHs
             values = []
 
@@ -204,6 +217,7 @@ class Spectra:
                 # Calculating mean and std
                 mean = np.mean(values_norm_Iinfo_list, axis=0)
                 std = np.std(values_norm_Iinfo_list, axis=0, ddof=1)
+                sem = std/len(values)
             else: 
                 for ind in range(len(indx_pixorg[0])):
                     values_along_CH = self.Raw_data[indx_pixorg[0][ind], indx_pixorg[1][ind], :]
@@ -218,11 +232,14 @@ class Spectra:
                 # Calculating mean and std
                 mean = np.mean(values, axis=0)
                 std = np.std(values, axis=0, ddof=1)
+                sem = std/len(values)
 
             # Plotting mean and std
             plt.plot(self.xaxis, mean, marker='o',label=f'{Label} (Mean)')
             plt.fill_between(self.xaxis, mean-std, mean+std,
                 alpha=0.7,label='Std')
+            # plt.fill_between(self.xaxis, mean-sem, mean+sem,
+            #     alpha=0.7,label='SEM')
             
         else:
             values = []
@@ -264,5 +281,95 @@ class Spectra:
         # Adjust layout to prevent overlapping
         plt.tight_layout()
         
-        return plt
+        return plt, mean
+    
+    # ------------------------------------------------------------------------
+    def spectrum_indiv_pixel_sep(self, indx_top10org):
+        """ 
+        Plot raw spectra of pixels separately
+        """
+        # Assuming indices1 is a tuple of arrays
+        num_plots = len(indx_top10org[0])
 
+        # Create subplots
+        fig, axs = plt.subplots(num_plots, 1, figsize=(8, 1.5 * num_plots), sharex=True, sharey=True)
+
+        for ind, ax in enumerate(axs):
+            values_along_CH = self.Raw_data[indx_top10org[0][ind], indx_top10org[1][ind], :]
+
+            # Plot values along CH
+            ax.plot(self.xaxis, values_along_CH, marker='o')
+            ax.set_xticks(self.xaxis)
+            ax.set_xticklabels(self.xaxis, rotation=90)
+
+        fig.supylabel('Pixel intensity')
+        fig.supxlabel(r'CH # ($\lambda$ in nm)')
+        # Adjust layout to prevent overlapping
+        plt.tight_layout()
+
+        return fig
+    
+    # ------------------------------------------------------------------------
+    def calc_ratio_peaks(self,values,min1,max1,min2,max2):
+        """ 
+        Calculate the ratio of specified wavelength range
+        """
+        peak1 = np.mean(values[min1:max1])
+        peak2 = np.mean(values[min2:max2])
+        return peak1/peak2
+    
+    # ------------------------------------------------------------------------
+    def det_contact(self,values,min1,max1,min2,max2):
+        """ 
+        Calc of ratios to det contact
+        """
+        if np.max(values) >= 350: # threshold for bkg 
+            test_org1 = self.calc_ratio_peaks(values,min1,max1,min2,max2)
+            test_org2 = self.calc_ratio_peaks(values,min2,max2,min1,max1)
+            # if  0.95 <= test_org1  and  test_org1 <= 1.05 and 0.95 <= test_org2  and test_org2 <= 1.05:
+            if test_org1 <= 1.05 and test_org2 <= 1.05:
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    # ------------------------------------------------------------------------ 
+    def pix_contact_ROI(self,pix_ROI,min1,max1,min2,max2):
+        """ 
+        Obtain pix determined as contact
+        """
+        x_list = []
+        y_list = []
+        for ind in range(len(pix_ROI[0])):
+            values_along_CH = self.Raw_data[pix_ROI[0][ind], pix_ROI[1][ind], :]    
+            test_for_contact = self.det_contact(values_along_CH,min1,max1,min2,max2)
+            if test_for_contact == True:
+                x_list.append(pix_ROI[1][ind])
+                y_list.append(pix_ROI[0][ind])
+
+        x_list = np.asarray(x_list)
+        y_list = np.asarray(y_list)
+
+        return np.stack((y_list,x_list))
+    
+    # ------------------------------------------------------------------------
+    def pix_in_image(self,indx_pixorg,composite_filename,color,vmax_value):
+        """ 
+        Encircle selected pix in image
+        """
+        image = Image.open(f'{composite_filename}.png')
+        # Specify the coordinates around which you want to draw circles
+        y_coord = indx_pixorg[0]
+        x_coord = indx_pixorg[1]
+        
+        # Create the heatmap
+        plt.imshow(image, cmap='gray', vmax=vmax_value)
+        # plt.colorbar()
+        
+        # Add circles around the specified coordinates
+        circle_radius = 0.7  # You can adjust the radius as needed
+        
+        for x, y in zip(x_coord, y_coord):
+            circle = patches.Circle((x, y), circle_radius, edgecolor= color, facecolor='none', linewidth=0.5)
+            plt.gca().add_patch(circle)
