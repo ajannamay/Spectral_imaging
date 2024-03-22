@@ -218,6 +218,9 @@ class Spectra:
                 mean = np.mean(values_norm_Iinfo_list, axis=0)
                 std = np.std(values_norm_Iinfo_list, axis=0, ddof=1)
                 sem = std/len(values)
+
+                # Recalculating mean area under the curve
+                meanI = simps(mean, self.xvalues_nm)
             else: 
                 for ind in range(len(indx_pixorg[0])):
                     values_along_CH = self.Raw_data[indx_pixorg[0][ind], indx_pixorg[1][ind], :]
@@ -233,6 +236,9 @@ class Spectra:
                 mean = np.mean(values, axis=0)
                 std = np.std(values, axis=0, ddof=1)
                 sem = std/len(values)
+
+                # Calculating mean area under the curve
+                meanI = simps(mean, self.xvalues_nm)
 
             # Plotting mean and std
             plt.plot(self.xaxis, mean, marker='o',label=f'{Label} (Mean)')
@@ -281,7 +287,7 @@ class Spectra:
         # Adjust layout to prevent overlapping
         plt.tight_layout()
         
-        return plt, mean
+        return plt, mean, meanI
     
     # ------------------------------------------------------------------------
     def spectrum_indiv_pixel_sep(self, indx_pix):
@@ -336,7 +342,24 @@ class Spectra:
             test_org1 = self.calc_ratio_peaks(values,min1,max1,min2,max2)
             test_org2 = self.calc_ratio_peaks(values,min2,max2,min1,max1)
             # if  0.95 <= test_org1  and  test_org1 <= 1.05 and 0.95 <= test_org2  and test_org2 <= 1.05:
-            if test_org1 <= 1.4 and test_org2 <= 1.4:
+            if test_org1 <= 1.15 and test_org2 <= 1.15:
+                return True
+            else:
+                return False
+        else:
+            return False
+        
+    # ------------------------------------------------------------------------
+    def det_contact_byintgrl(self,values,bkg_mean_area_under_curve,min1,max1,min2,max2):
+        """ 
+        Calc of ratios to det contact
+        """
+        area_under_curve = simps(values, self.xvalues_nm)
+        if area_under_curve >= bkg_mean_area_under_curve: # threshold for bkg 
+            test_org1 = self.calc_ratio_peaks(values,min1,max1,min2,max2)
+            test_org2 = self.calc_ratio_peaks(values,min2,max2,min1,max1)
+            # if  0.95 <= test_org1  and  test_org1 <= 1.05 and 0.95 <= test_org2  and test_org2 <= 1.05:
+            if test_org1 <= 1.35 and test_org2 <= 1.35:
                 return True
             else:
                 return False
@@ -353,6 +376,25 @@ class Spectra:
         for ind in range(len(pix_ROI[0])):
             values_along_CH = self.Raw_data[pix_ROI[0][ind], pix_ROI[1][ind], :]    
             test_for_contact = self.det_contact(values_along_CH,min1,max1,min2,max2)
+            if test_for_contact == True:
+                x_list.append(pix_ROI[1][ind])
+                y_list.append(pix_ROI[0][ind])
+
+        x_list = np.asarray(x_list)
+        y_list = np.asarray(y_list)
+
+        return np.stack((y_list,x_list))
+    
+    # ------------------------------------------------------------------------ 
+    def pix_contact_ROI_byintgrl(self,pix_ROI,bkg_mean_area_under_curve,min1,max1,min2,max2):
+        """ 
+        Obtain pix determined as contact
+        """
+        x_list = []
+        y_list = []
+        for ind in range(len(pix_ROI[0])):
+            values_along_CH = self.Raw_data[pix_ROI[0][ind], pix_ROI[1][ind], :]    
+            test_for_contact = self.det_contact_byintgrl(values_along_CH,bkg_mean_area_under_curve,min1,max1,min2,max2)
             if test_for_contact == True:
                 x_list.append(pix_ROI[1][ind])
                 y_list.append(pix_ROI[0][ind])
@@ -382,3 +424,49 @@ class Spectra:
         for x, y in zip(x_coord, y_coord):
             circle = patches.Circle((x, y), circle_radius, edgecolor= color, facecolor='none', linewidth=0.5)
             plt.gca().add_patch(circle)
+
+    # ------------------------------------------------------------------------
+    def generate_peaks_scatter_plot(self,min1,max1,min2,max2):
+        """ 
+        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        """
+        # Create a 2D array with same shape as the raw data
+        peak1 = np.zeros(self.Raw_data[:,:,0].shape)
+        peak2 = np.zeros(self.Raw_data[:,:,0].shape)
+        # Iterate over the rows of the array
+        for i in range(self.Raw_data.shape[0]):
+            # Iterate over the columns of the array
+            for j in range(self.Raw_data.shape[1]):
+                # Get the values of the two peaks
+                values = self.Raw_data[i, j, :]
+                # Calculate the mean intensity of the two peaks
+                peak1[i, j] = np.mean(values[min1:max1])
+                peak2[i, j] = np.mean(values[min2:max2])
+
+        # Define a function that selects pixels based on the mean intensity of the two peaks
+        slope_diff = 0.5
+        bkg = 350
+        def indx_select_pix(array1, array2):
+            ratio1 = array1 / array2
+            ratio2 = array2 / array1
+            condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg - array2 )
+            indices = np.where(condition)
+            return indices
+        # Find indices of points that satisfy the condition
+        contact_pix = indx_select_pix(peak1, peak2)
+        
+        # Create a scatter plot of the mean intensity of the two peaks
+        plt.scatter(peak1, peak2, alpha=0.3, marker='.')
+        # Highlight the selected points
+        plt.scatter(peak1[contact_pix], peak2[contact_pix], color='orange', marker='.', label='Contact points')
+        # Create fitted lines
+        x = np.linspace(0, 4050, 1000)
+        plt.plot(x,x, color='grey', linestyle='--', label=f'ratio1,2 = 1')
+        plt.plot(x,bkg-x, color='black', linestyle='--', label='Bkg threshold')  
+        plt.plot(x,(1/(1+slope_diff))*x, color='green')
+        plt.plot(x,(1+slope_diff)*x, color='green')
+        # Add labels and title
+        plt.ylabel(f'Mean intensity of ER peak ({min1+1}-{max1+1} CHs)')
+        plt.xlabel(f'Mean intensity of M peak ({min2+1}-{max2+1} CHs)')
+        
+        return plt, contact_pix
