@@ -3,6 +3,7 @@ import javabridge
 import bioformats
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy.integrate import simps
 from PIL import Image
 import matplotlib.patches as patches
@@ -65,6 +66,13 @@ class Spectra:
         self.xaxis = [f'{a+1} ({self.start_nm + self.bin_size * a})' for a in range(self.Num_CH)]
         self.xvalues = np.array([a+1 for a in range(self.Num_CH)])
         self.xvalues_nm = np.array([self.start_nm + self.bin_size * a for a in range(self.Num_CH)])
+    
+    # ------------------------------------------------------------------------
+    def obtain_unmixed(self):
+        """ 
+        Obtain unmixed data
+        """
+        return self.arr_organelle1, self.arr_organelle2
     
     # ------------------------------------------------------------------------
     def pix_mask_ImageJ(self,mask_filename):
@@ -325,6 +333,41 @@ class Spectra:
         return plt
     
     # ------------------------------------------------------------------------
+    def spectrum_indiv_pixel_sep_hor(self, indx_pix):
+        """ 
+        Plot raw spectra of pixels separately
+        """
+        # Assuming indx_pix is a tuple of arrays
+        num_plots = len(indx_pix[0])
+        plots_per_column = 10
+        num_columns = (num_plots + plots_per_column - 1) // plots_per_column  # Ceiling division to get number of columns
+
+        # Create subplots
+        fig, axs = plt.subplots(plots_per_column, num_columns, figsize=(5*num_columns, 1.5 * plots_per_column), sharex=True, sharey=True)
+
+        for col in range(num_columns):
+            for row in range(plots_per_column):
+                plot_index = col * plots_per_column + row
+                if plot_index >= num_plots:
+                    break
+
+                values_along_CH = self.Raw_data[indx_pix[0][plot_index], indx_pix[1][plot_index], :]
+                axs[row, col].plot(self.xaxis, values_along_CH, marker='o')
+                if row == plots_per_column - 1:
+                    axs[row, col].set_xticks(self.xaxis)
+                    axs[row, col].set_xticklabels(self.xaxis, rotation=90)
+                else:
+                    axs[row, col].set_xticks(self.xaxis)
+                    axs[row, col].set_xticklabels([])  # Remove tick labels for non-last rows
+
+        # fig.supylabel('Pixel intensity')
+        # fig.supxlabel(r'CH # ($\lambda$ in nm)')
+        # Adjust layout to prevent overlapping
+        plt.tight_layout()
+
+        return plt
+    
+    # ------------------------------------------------------------------------
     def calc_ratio_peaks(self,values,min1,max1,min2,max2):
         """ 
         Calculate the ratio of specified wavelength range
@@ -424,9 +467,134 @@ class Spectra:
         for x, y in zip(x_coord, y_coord):
             circle = patches.Circle((x, y), circle_radius, edgecolor= color, facecolor='none', linewidth=0.5)
             plt.gca().add_patch(circle)
+    
+    # ------------------------------------------------------------------------
+    def calc_peaks_mean(self,min1,max1,min2,max2,withMask,mask):
+        """ 
+        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        """
+        if withMask == True:
+            # Apply mask to the raw data
+            self.Raw_data = self.Raw_data*mask[:,:,np.newaxis]
+            # Create a 2D array with same shape as the raw data
+            peak1 = np.zeros(self.Raw_data[:,:,0].shape)
+            peak2 = np.zeros(self.Raw_data[:,:,0].shape)
+            # Iterate over the rows of the array
+            for i in range(self.Raw_data.shape[0]):
+                # Iterate over the columns of the array
+                for j in range(self.Raw_data.shape[1]):
+                    # Get the values of the two peaks
+                    values = self.Raw_data[i, j, :]
+                    # Calculate the mean intensity of the two peaks
+                    peak1[i, j] = np.mean(values[min1:max1])  # ER peak
+                    peak2[i, j] = np.mean(values[min2:max2])  # M peak
+        else:
+            # Create a 2D array with same shape as the raw data
+            peak1 = np.zeros(self.Raw_data[:,:,0].shape)
+            peak2 = np.zeros(self.Raw_data[:,:,0].shape)
+            # Iterate over the rows of the array
+            for i in range(self.Raw_data.shape[0]):
+                # Iterate over the columns of the array
+                for j in range(self.Raw_data.shape[1]):
+                    # Get the values of the two peaks
+                    values = self.Raw_data[i, j, :]
+                    # Calculate the mean intensity of the two peaks
+                    peak1[i, j] = np.mean(values[min1:max1])  # ER peak
+                    peak2[i, j] = np.mean(values[min2:max2])  # M peak
+        return peak1, peak2
 
     # ------------------------------------------------------------------------
-    def generate_peaks_scatter_plot(self,min1,max1,min2,max2):
+    def generate_peaks_scatter_plot(self,peak1,peak2,min1,max1,min2,max2):
+        """ 
+        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        """
+        # Define a function that selects pixels based on the mean intensity of the two peaks
+        slope_diff = 0.5
+        bkg_yint = 400
+        bkg_xint = 200
+        def indx_cntct_pix(array1, array2):
+            ratio1 = array1 / array2
+            ratio2 = array2 / array1
+            # condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            condition = np.logical_and(np.logical_and(ratio1 < 1+slope_diff, ratio2 < 1+slope_diff), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            indices = np.where(condition)
+            return indices
+        def indx_orgnanelle_pix(array1, array2):
+            ratio1 = array1 / array2
+            ratio2 = array2 / array1
+            condition1 = np.logical_and(ratio1 > 1+slope_diff, array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            condition2 = np.logical_and(ratio2 > 1+slope_diff, array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            indices1 = np.where(condition1)
+            indices2 = np.where(condition2)
+            return indices1, indices2
+        # Find indices of points that satisfy the condition
+        contact_pix = indx_cntct_pix(peak1, peak2)
+        organelle1_pix, organelle2_pix = indx_orgnanelle_pix(peak1, peak2)
+        
+        # Create a scatter plot of the mean intensity of the two peaks
+        plt.scatter(peak2, peak1, alpha=0.005, marker='.')
+        # Highlight the selected points
+        # plt.scatter(peak2[contact_pix], peak1[contact_pix], color='orange', alpha=0.05, marker='.', label='Contact points')
+        # plt.scatter(peak2[organelle1_pix], peak1[organelle1_pix], color='red', marker='.', label=f'{self.organelle1} points')
+        # plt.scatter(peak2[organelle2_pix], peak1[organelle2_pix], color='green', marker='.', label=f'{self.organelle2} points')
+        # Create fitted lines
+        # x = np.linspace(0, 4050, 1000)
+        # plt.plot(x,x, color='grey', linestyle='--', label=f'ratio1,2 = 1')
+        # plt.plot(x,bkg_yint - ((bkg_yint/bkg_xint)*x), color='black', linestyle='--', label='Bkg threshold')  
+        # plt.plot(x,(1/(1+slope_diff))*x, color='grey')
+        # plt.plot(x,(1+slope_diff)*x, color='grey')
+        # Add labels and title
+        plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
+        plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
+
+        return plt, organelle1_pix, organelle2_pix, contact_pix 
+    
+    # ------------------------------------------------------------------------
+    def generate_peaks_hist2D_plot(self,peak1,peak2,min1,max1,min2,max2):
+        """ 
+        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        """
+        # Flatten the arrays
+        peak2 = peak2.flatten()
+        peak1 = peak1.flatten()
+        # Find indices of points that are non-zero
+        indices = np.where(np.logical_and(peak1 > 0, peak2 > 0))
+
+        # Create a contour plot to map the density of the points
+        # plt.hexbin(peak2[indices], peak1[indices], gridsize=100, bins='log', cmap='inferno') # bins='log',
+        fig = plt.figure(figsize=(5,5))
+        plt.scatter(peak2, peak1, alpha=0.03, marker='.')
+        sns.kdeplot(x = peak2[indices], y = peak1[indices], color='black')
+        # plt.colorbar()
+        plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
+        plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
+
+        return fig
+    
+    # ------------------------------------------------------------------------
+    def generate_peaktounmixed_scatter_plot(self, indx_pixorg1, indx_pixorg2, indx_pixcontact):
+        """ 
+        Generate scatter plot from unmixed data
+        """
+        # Plot the 2 arrays in a scatter plot
+        plt.scatter(self.arr_organelle2, self.arr_organelle1, marker='.', alpha=0.1)
+
+        # Highlight the selected point
+        plt.scatter(self.arr_organelle2[indx_pixorg1], self.arr_organelle1[indx_pixorg1], marker='.',color='red',
+                    label=f'${self.organelle1}$')
+        plt.scatter(self.arr_organelle2[indx_pixorg2], self.arr_organelle1[indx_pixorg2], color='green', marker='.',
+                    label=f'${self.organelle2}$')
+        plt.scatter(self.arr_organelle2[indx_pixcontact], self.arr_organelle1[indx_pixcontact], marker='.', color='orange',
+                    label=f'$contact$')
+
+        # Add labels and title
+        plt.ylabel(f'Pixel intensity ({self.organelle1})')
+        plt.xlabel(f'Pixel intensity ({self.organelle2})')
+
+        return plt
+    
+    # ------------------------------------------------------------------------
+    def generate_peak1org_scatter_plot(self,min1,max1,min2,max2,indx_pixorg1,indx_pixorg2,color1,color2):
         """ 
         Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
         """
@@ -440,33 +608,50 @@ class Spectra:
                 # Get the values of the two peaks
                 values = self.Raw_data[i, j, :]
                 # Calculate the mean intensity of the two peaks
-                peak1[i, j] = np.mean(values[min1:max1])
-                peak2[i, j] = np.mean(values[min2:max2])
+                peak1[i, j] = np.mean(values[min1:max1])  # ER peak
+                peak2[i, j] = np.mean(values[min2:max2])  # M peak
 
         # Define a function that selects pixels based on the mean intensity of the two peaks
         slope_diff = 0.5
-        bkg = 350
-        def indx_select_pix(array1, array2):
+        bkg_yint = 400
+        bkg_xint = 200
+        def indx_cntct_pix(array1, array2):
             ratio1 = array1 / array2
             ratio2 = array2 / array1
-            condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg - array2 )
+            # condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            condition = np.logical_and(np.logical_and(ratio1 < 1+slope_diff, ratio2 < 1+slope_diff), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
             indices = np.where(condition)
             return indices
+        def indx_orgnanelle_pix(array1, array2):
+            ratio1 = array1 / array2
+            ratio2 = array2 / array1
+            condition1 = np.logical_and(ratio1 > 1+slope_diff, array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            condition2 = np.logical_and(ratio2 > 1+slope_diff, array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            indices1 = np.where(condition1)
+            indices2 = np.where(condition2)
+            return indices1, indices2
         # Find indices of points that satisfy the condition
-        contact_pix = indx_select_pix(peak1, peak2)
+        # contact_pix = indx_cntct_pix(peak1, peak2)
+        # organelle1_pix, organelle2_pix = indx_orgnanelle_pix(peak1, peak2)
         
         # Create a scatter plot of the mean intensity of the two peaks
-        plt.scatter(peak1, peak2, alpha=0.3, marker='.')
+        plt.scatter(peak2, peak1, alpha=0.01, marker='.')
         # Highlight the selected points
-        plt.scatter(peak1[contact_pix], peak2[contact_pix], color='orange', marker='.', label='Contact points')
+        # plt.scatter(peak2[contact_pix], peak1[contact_pix], color='orange', alpha=0.1, marker='.', label='Contact points')
+        # plt.scatter(peak2[organelle1_pix], peak1[organelle1_pix], color='red', marker='.', label=f'{self.organelle1} points')
+        # plt.scatter(peak2[organelle2_pix], peak1[organelle2_pix], color='green', marker='.', label=f'{self.organelle2} points')
+        plt.scatter(peak2[indx_pixorg1], peak1[indx_pixorg1], color=f'{color1}', alpha=0.03, marker='.')
+        plt.scatter(peak2[indx_pixorg2], peak1[indx_pixorg2], color=f'{color2}', alpha=0.03, marker='.')
         # Create fitted lines
         x = np.linspace(0, 4050, 1000)
         plt.plot(x,x, color='grey', linestyle='--', label=f'ratio1,2 = 1')
-        plt.plot(x,bkg-x, color='black', linestyle='--', label='Bkg threshold')  
-        plt.plot(x,(1/(1+slope_diff))*x, color='green')
-        plt.plot(x,(1+slope_diff)*x, color='green')
+        plt.plot(x,bkg_yint - ((bkg_yint/bkg_xint)*x), color='black', linestyle='--', label='Bkg threshold')  
+        plt.plot(x,(1/(1+slope_diff))*x, color='grey')
+        plt.plot(x,(1+slope_diff)*x, color='grey')
         # Add labels and title
-        plt.ylabel(f'Mean intensity of ER peak ({min1+1}-{max1+1} CHs)')
-        plt.xlabel(f'Mean intensity of M peak ({min2+1}-{max2+1} CHs)')
+        plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
+        plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
         
-        return plt, contact_pix
+        return plt
+    
+    
