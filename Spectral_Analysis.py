@@ -75,6 +75,19 @@ class Spectra:
         return self.arr_organelle1, self.arr_organelle2
     
     # ------------------------------------------------------------------------
+    def remove_dead_cells(self,mask_filename):
+        """ 
+        Use ROI corres. to dead cells to remove them from the image
+        """
+        mask = Image.open(f'{mask_filename}.tif')
+        mask = np.asarray(mask)
+        mask[mask == 0] = 10
+        mask[mask == 255] = 0
+        mask[mask == 10] = 1
+        self.Raw_data = self.Raw_data*mask[:,:,np.newaxis]
+        return self.Raw_data
+    
+    # ------------------------------------------------------------------------
     def pix_mask_ImageJ(self,mask_filename):
         """ 
         Obtain pix from mask created in ImageJ
@@ -469,25 +482,21 @@ class Spectra:
             plt.gca().add_patch(circle)
     
     # ------------------------------------------------------------------------
-    def calc_peaks_mean(self,min1,max1,min2,max2,withMask,mask):
+    def calc_peaks_mean(self,min1,max1,min2,max2,withMask,maskpix):
         """ 
         Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
         """
         if withMask == True:
-            # Apply mask to the raw data
-            self.Raw_data = self.Raw_data*mask[:,:,np.newaxis]
-            # Create a 2D array with same shape as the raw data
-            peak1 = np.zeros(self.Raw_data[:,:,0].shape)
-            peak2 = np.zeros(self.Raw_data[:,:,0].shape)
-            # Iterate over the rows of the array
-            for i in range(self.Raw_data.shape[0]):
-                # Iterate over the columns of the array
-                for j in range(self.Raw_data.shape[1]):
-                    # Get the values of the two peaks
-                    values = self.Raw_data[i, j, :]
-                    # Calculate the mean intensity of the two peaks
-                    peak1[i, j] = np.mean(values[min1:max1])  # ER peak
-                    peak2[i, j] = np.mean(values[min2:max2])  # M peak
+            y_coord = maskpix[0]
+            x_coord = maskpix[1]
+            # Create array with same len as num of pix
+            peak1 = np.zeros(len(y_coord))
+            peak2 = np.zeros(len(y_coord))
+            for x, y in zip(x_coord, y_coord):
+                values = self.Raw_data[y, x, :]
+                peak1[y] = np.mean(values[min1:max1])  # ER peak
+                peak2[y] = np.mean(values[min2:max2])  # M peak
+            # print(values)
         else:
             # Create a 2D array with same shape as the raw data
             peak1 = np.zeros(self.Raw_data[:,:,0].shape)
@@ -527,16 +536,25 @@ class Spectra:
             indices1 = np.where(condition1)
             indices2 = np.where(condition2)
             return indices1, indices2
+        def indx_inspct_pix(array1, array2):
+            ratio1 = array1 / array2
+            # ratio2 = array2 / array1
+            # condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
+            condition = np.logical_and(ratio1 < 2/5, array2 > 300)
+            indices = np.where(condition)
+            return indices
         # Find indices of points that satisfy the condition
-        contact_pix = indx_cntct_pix(peak1, peak2)
-        organelle1_pix, organelle2_pix = indx_orgnanelle_pix(peak1, peak2)
+        # contact_pix = indx_cntct_pix(peak1, peak2)
+        # organelle1_pix, organelle2_pix = indx_orgnanelle_pix(peak1, peak2)
+        inspct_pix = indx_inspct_pix(peak1, peak2)
         
         # Create a scatter plot of the mean intensity of the two peaks
-        plt.scatter(peak2, peak1, alpha=0.005, marker='.')
+        plt.scatter(peak2, peak1, alpha=0.07, marker='.')
         # Highlight the selected points
         # plt.scatter(peak2[contact_pix], peak1[contact_pix], color='orange', alpha=0.05, marker='.', label='Contact points')
         # plt.scatter(peak2[organelle1_pix], peak1[organelle1_pix], color='red', marker='.', label=f'{self.organelle1} points')
         # plt.scatter(peak2[organelle2_pix], peak1[organelle2_pix], color='green', marker='.', label=f'{self.organelle2} points')
+        plt.scatter(peak2[inspct_pix], peak1[inspct_pix], color='green', marker='.', label=f'{self.organelle2} points')
         # Create fitted lines
         # x = np.linspace(0, 4050, 1000)
         # plt.plot(x,x, color='grey', linestyle='--', label=f'ratio1,2 = 1')
@@ -547,7 +565,7 @@ class Spectra:
         plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
         plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
 
-        return plt, organelle1_pix, organelle2_pix, contact_pix 
+        return plt, inspct_pix  # organelle1_pix, organelle2_pix, contact_pix 
     
     # ------------------------------------------------------------------------
     def generate_peaks_hist2D_plot(self,peak1,peak2,min1,max1,min2,max2):
@@ -561,15 +579,15 @@ class Spectra:
         indices = np.where(np.logical_and(peak1 > 0, peak2 > 0))
 
         # Create a contour plot to map the density of the points
-        # plt.hexbin(peak2[indices], peak1[indices], gridsize=100, bins='log', cmap='inferno') # bins='log',
-        fig = plt.figure(figsize=(5,5))
-        plt.scatter(peak2, peak1, alpha=0.03, marker='.')
-        sns.kdeplot(x = peak2[indices], y = peak1[indices], color='black')
-        # plt.colorbar()
+        plt.hexbin(peak2[indices], peak1[indices], gridsize=100, bins='log', cmap='inferno') # bins='log',
+        # fig = plt.figure(figsize=(5,5))
+        # plt.scatter(peak2, peak1, alpha=0.3, marker='.')
+        # sns.kdeplot(x = peak2[indices], y = peak1[indices], color='black',alpha=0.5, levels=5, linewidths=1.5)
+        plt.colorbar()
         plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
         plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
 
-        return fig
+        return plt
     
     # ------------------------------------------------------------------------
     def generate_peaktounmixed_scatter_plot(self, indx_pixorg1, indx_pixorg2, indx_pixcontact):
