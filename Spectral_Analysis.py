@@ -7,6 +7,7 @@ import seaborn as sns
 from scipy.integrate import simps
 from PIL import Image
 import matplotlib.patches as patches
+from skimage import io, transform
 
 javabridge.start_vm(class_path=bioformats.JARS)
 
@@ -14,7 +15,8 @@ class Spectra:
     """ 
     For analyzing spectrum of image data
     """
-    def __init__(self, raw_data_filename, unmixed_filename, bin_size, Num_pixels, Num_CH, zstack_ind, organelle1, organelle2, start_nm):
+    def __init__(self, tif, raw_data_filename, unmixed_filename, bin_size, Num_pixels, Num_CH, zstack_ind, organelle1, organelle2, start_nm):
+        self.tif = tif
         self.raw_data_filename = raw_data_filename
         self.unmixed_filename = unmixed_filename
         self.bin_size = bin_size
@@ -25,42 +27,54 @@ class Spectra:
         self.organelle2 = organelle2  # 2nd CH in unmixed image
         self.start_nm = start_nm
 
-        if self.zstack_ind == 0:
+        if self.tif == True:
             # Load raw data
-            self.Raw_data = bioformats.load_image(
-                path=f'{self.raw_data_filename}.nd2',
-                c=None,
-                rescale=False)
+            self.Raw_data = io.imread(f'{self.raw_data_filename}.tif')
             # Load unmixed data (if needed)
             if self.unmixed_filename == False:
                 pass
             else:
-                self.Unmixed_data = bioformats.load_image(
-                    path=f'{self.unmixed_filename}.nd2',
-                    c=None,
-                    rescale=False)
+                self.Unmixed_data = io.imread(f'{self.unmixed_filename}.tif')
                 # Specify array of organelle
                 self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
                 self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
         else:
-            # Load raw data
-            self.Raw_data = bioformats.load_image(
-                path=f'{self.raw_data_filename}.nd2',
-                c=None,
-                z=zstack_ind-1,
-                rescale=False)
-            # Load unmixed data (if needed)
-            if self.unmixed_filename == False:
-                pass
+            if self.zstack_ind == 0:
+                # Load raw data
+                self.Raw_data = bioformats.load_image(
+                    path=f'{self.raw_data_filename}.nd2',
+                    c=None,
+                    rescale=False)
+                # Load unmixed data (if needed)
+                if self.unmixed_filename == False:
+                    pass
+                else:
+                    self.Unmixed_data = bioformats.load_image(
+                        path=f'{self.unmixed_filename}.nd2',
+                        c=None,
+                        rescale=False)
+                    # Specify array of organelle
+                    self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
+                    self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
             else:
-                self.Unmixed_data = bioformats.load_image(
-                    path=f'{self.unmixed_filename}.nd2',
+                # Load raw data
+                self.Raw_data = bioformats.load_image(
+                    path=f'{self.raw_data_filename}.nd2',
                     c=None,
                     z=zstack_ind-1,
                     rescale=False)
-                # Specify array of organelle
-                self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
-                self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
+                # Load unmixed data (if needed)
+                if self.unmixed_filename == False:
+                    pass
+                else:
+                    self.Unmixed_data = bioformats.load_image(
+                        path=f'{self.unmixed_filename}.nd2',
+                        c=None,
+                        z=zstack_ind-1,
+                        rescale=False)
+                    # Specify array of organelle
+                    self.arr_organelle1 = self.Unmixed_data[ :, :, 0]
+                    self.arr_organelle2 = self.Unmixed_data[ :, :, 1]
                 
         # x-axis for the spectrum later on
         self.xaxis = [f'{a+1} ({self.start_nm + self.bin_size * a})' for a in range(self.Num_CH)]
@@ -94,8 +108,65 @@ class Spectra:
         """
         mask = Image.open(f'{mask_filename}.tif')
         mask = np.asarray(mask)
-        mask_indx = np.where(mask > 0)
+        mask_indx = np.where(mask > 0)  # > 0)
         return mask_indx
+    
+    # ------------------------------------------------------------------------
+    def pix_aligned_cell_seg_mask(self,mask_filename):
+        """ 
+        Obtain pix from mask created in ImageJ
+        """
+        # Define the similarity transformation matrix
+        matrix_similarity = np.array(
+            [[ 0.90625,  0.0390625,  16.0],
+            [-0.0390625,  0.90625,  84.0],
+            [0.000000,  0.000000,  1.000000]])
+        similarity_transform = transform.SimilarityTransform(matrix=matrix_similarity)
+        mask = io.imread(f'{mask_filename}.tif')
+        # mask = np.asarray(mask)
+        mask = transform.rotate(mask, 90)
+        mask = transform.warp(mask, similarity_transform)
+        mask = (mask - mask.min()) / (mask.max() - mask.min())
+        mask_indx = np.where(mask > 0)  # > 0)
+        return mask_indx
+    
+    # ------------------------------------------------------------------------
+    def pix_aligned_percell_seg_mask(self,cell_num,mask_filename):
+        """ 
+        Obtain pix from mask created in ImageJ
+        """
+        # Define the similarity transformation matrix
+        matrix_similarity = np.array(
+            [[ 0.90625,  0.0390625,  16.0],
+            [-0.0390625,  0.90625,  84.0],
+            [0.000000,  0.000000,  1.000000]])
+        similarity_transform = transform.SimilarityTransform(matrix=matrix_similarity)
+        mask = io.imread(f'{mask_filename}.tif')
+        mask[mask != cell_num] = 0
+        mask = transform.rotate(mask, 90)
+        mask = transform.warp(mask, similarity_transform)
+        mask = (mask - mask.min()) / (mask.max() - mask.min())
+        mask_indx = np.where(mask > 0) 
+        return mask_indx
+    
+    # ------------------------------------------------------------------------
+    def pix_aligned_cell_list_seg_mask(self,cell_list,mask_filename):
+        """ 
+        Obtain pix from mask created in ImageJ
+        """
+        # Define the similarity transformation matrix
+        matrix_similarity = np.array(
+            [[ 0.90625,  0.0390625,  16.0],
+            [-0.0390625,  0.90625,  84.0],
+            [0.000000,  0.000000,  1.000000]])
+        similarity_transform = transform.SimilarityTransform(matrix=matrix_similarity)
+        mask = io.imread(f'{mask_filename}.tif')
+        mask[~np.isin(mask, cell_list)] = 0
+        mask = transform.rotate(mask, 90)
+        mask = transform.warp(mask, similarity_transform)
+        mask = (mask - mask.min()) / (mask.max() - mask.min())
+        mask_indx = np.where(mask > 0) 
+        return mask_indx   
         
     # ------------------------------------------------------------------------
     def generate_scatter_plot(self, saturated_pix, Num_toppixels):
@@ -480,23 +551,59 @@ class Spectra:
         for x, y in zip(x_coord, y_coord):
             circle = patches.Circle((x, y), circle_radius, edgecolor= color, facecolor='none', linewidth=0.5)
             plt.gca().add_patch(circle)
+
+    # ------------------------------------------------------------------------
+    def ROI_in_image(self,indx_pixorg,composite_filename):
+        """ 
+        
+        """
+        image = Image.open(f'{composite_filename}.png')
+        image_array = np.array(image)
+        # Specify the coordinates around which you want to draw circles
+        y_coord = indx_pixorg[0]
+        x_coord = indx_pixorg[1]
+
+        # Extract the region of interest (ROI)
+        x_min = np.min(x_coord)
+        x_max = np.max(x_coord)
+        y_min = np.min(y_coord)
+        y_max = np.max(y_coord)
+        roi = image_array[y_min:y_max, x_min:x_max]
+        
+        # Create the heatmap
+        plt.imshow(roi, cmap='gray', origin='lower')
+        plt.xticks([])
+        plt.yticks([])  
     
     # ------------------------------------------------------------------------
     def calc_peaks_mean(self,min1,max1,min2,max2,withMask,maskpix):
         """ 
-        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        Calculate mean intensity of two regions of determined peaks of the two spectra
         """
         if withMask == True:
             y_coord = maskpix[0]
             x_coord = maskpix[1]
-            # Create array with same len as num of pix
-            peak1 = np.zeros(len(y_coord))
-            peak2 = np.zeros(len(y_coord))
+            # # Create array with same len as num of pix
+            # peak1 = np.zeros(len(y_coord))
+            # peak2 = np.zeros(len(y_coord))
+            # i = 0
+            # for x, y in zip(x_coord, y_coord):
+            #     values = self.Raw_data[y, x, :]
+            #     peak1[i] = np.mean(values[min1:max1])  # ER peak
+            #     peak2[i] = np.mean(values[min2:max2])  # M peak
+            #     i += 1
+
+            # Create a 2D array with same shape as the raw data
+            peak1 = np.zeros(self.Raw_data[:,:,0].shape)
+            peak2 = np.zeros(self.Raw_data[:,:,0].shape)
+
             for x, y in zip(x_coord, y_coord):
+                # Get the values of the two peaks
                 values = self.Raw_data[y, x, :]
-                peak1[y] = np.mean(values[min1:max1])  # ER peak
-                peak2[y] = np.mean(values[min2:max2])  # M peak
-            # print(values)
+                # Calculate the mean intensity of the two peaks
+                peak1[y, x] = np.mean(values[min1:max1])  # ER peak
+                peak2[y, x] = np.mean(values[min2:max2])  # M peak
+ 
         else:
             # Create a 2D array with same shape as the raw data
             peak1 = np.zeros(self.Raw_data[:,:,0].shape)
@@ -511,6 +618,42 @@ class Spectra:
                     peak1[i, j] = np.mean(values[min1:max1])  # ER peak
                     peak2[i, j] = np.mean(values[min2:max2])  # M peak
         return peak1, peak2
+    
+    # ------------------------------------------------------------------------
+    def calc_peaks_mean_tif(self,min1,max1,min2,max2,withMask,maskpix):
+        """ 
+        Calculate mean intensity of two regions of determined peaks of the two spectra
+        """
+        if withMask == True:
+            y_coord = maskpix[0]
+            x_coord = maskpix[1]
+
+            # Create a 2D array with same shape as the raw data
+            peak1 = np.zeros(self.Raw_data[0,:,:].shape)
+            peak2 = np.zeros(self.Raw_data[0,:,:].shape)
+
+            for x, y in zip(x_coord, y_coord):
+                # Get the values of the two peaks
+                values = self.Raw_data[:,y, x]
+                # Calculate the mean intensity of the two peaks
+                peak1[y, x] = np.mean(values[min1:max1])  # ER peak
+                peak2[y, x] = np.mean(values[min2:max2])  # M peak
+ 
+        else:
+            # Create a 2D array with same shape as the raw data
+            peak1 = np.zeros(self.Raw_data[0,:,:].shape)
+            peak2 = np.zeros(self.Raw_data[0,:,:].shape)
+            # Iterate over the rows of the array
+            for i in range(self.Raw_data.shape[1]):
+                # Iterate over the columns of the array
+                for j in range(self.Raw_data.shape[2]):
+                    # Get the values of the two peaks
+                    values = self.Raw_data[:,i, j]
+                    # Calculate the mean intensity of the two peaks
+                    peak1[i, j] = np.mean(values[min1:max1])  # ER peak
+                    peak2[i, j] = np.mean(values[min2:max2])  # M peak
+        return peak1, peak2
+    
 
     # ------------------------------------------------------------------------
     def generate_peaks_scatter_plot(self,peak1,peak2,min1,max1,min2,max2):
@@ -538,34 +681,40 @@ class Spectra:
             return indices1, indices2
         def indx_inspct_pix(array1, array2):
             ratio1 = array1 / array2
-            # ratio2 = array2 / array1
-            # condition = np.logical_and(np.logical_and(ratio1 <= 1+slope_diff, ratio2 <= 1+slope_diff ), array1 > bkg_yint - ((bkg_yint/bkg_xint)*array2) )
-            condition = np.logical_and(ratio1 < 2/5, array2 > 300)
+            condition = np.logical_and(ratio1 < 200/800, array2 > 600)
             indices = np.where(condition)
             return indices
         # Find indices of points that satisfy the condition
         # contact_pix = indx_cntct_pix(peak1, peak2)
         # organelle1_pix, organelle2_pix = indx_orgnanelle_pix(peak1, peak2)
-        inspct_pix = indx_inspct_pix(peak1, peak2)
+        # inspct_pix = indx_inspct_pix(peak1, peak2)
         
         # Create a scatter plot of the mean intensity of the two peaks
-        plt.scatter(peak2, peak1, alpha=0.07, marker='.')
+        plt.scatter(peak2, peak1, alpha=0.07, marker='.',color='black')
+       
         # Highlight the selected points
         # plt.scatter(peak2[contact_pix], peak1[contact_pix], color='orange', alpha=0.05, marker='.', label='Contact points')
         # plt.scatter(peak2[organelle1_pix], peak1[organelle1_pix], color='red', marker='.', label=f'{self.organelle1} points')
         # plt.scatter(peak2[organelle2_pix], peak1[organelle2_pix], color='green', marker='.', label=f'{self.organelle2} points')
-        plt.scatter(peak2[inspct_pix], peak1[inspct_pix], color='green', marker='.', label=f'{self.organelle2} points')
+        
+        # plt.scatter(peak2[inspct_pix], peak1[inspct_pix], color='green', marker='.', label=f'{self.organelle2} points')
+       
         # Create fitted lines
         # x = np.linspace(0, 4050, 1000)
         # plt.plot(x,x, color='grey', linestyle='--', label=f'ratio1,2 = 1')
         # plt.plot(x,bkg_yint - ((bkg_yint/bkg_xint)*x), color='black', linestyle='--', label='Bkg threshold')  
         # plt.plot(x,(1/(1+slope_diff))*x, color='grey')
         # plt.plot(x,(1+slope_diff)*x, color='grey')
+        
+
+        plt.ylim(bottom=0, top=1000)
+        plt.xlim(left=0, right=1000)
+
         # Add labels and title
         plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
         plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
 
-        return plt, inspct_pix  # organelle1_pix, organelle2_pix, contact_pix 
+        return plt #, inspct_pix  # organelle1_pix, organelle2_pix, contact_pix 
     
     # ------------------------------------------------------------------------
     def generate_peaks_hist2D_plot(self,peak1,peak2,min1,max1,min2,max2):
@@ -577,17 +726,39 @@ class Spectra:
         peak1 = peak1.flatten()
         # Find indices of points that are non-zero
         indices = np.where(np.logical_and(peak1 > 0, peak2 > 0))
-
+        print(len(indices[0]))
         # Create a contour plot to map the density of the points
-        plt.hexbin(peak2[indices], peak1[indices], gridsize=100, bins='log', cmap='inferno') # bins='log',
+        # plt.hexbin(peak2[indices], peak1[indices], gridsize=100, bins='log', cmap='inferno') # bins='log',
         # fig = plt.figure(figsize=(5,5))
         # plt.scatter(peak2, peak1, alpha=0.3, marker='.')
-        # sns.kdeplot(x = peak2[indices], y = peak1[indices], color='black',alpha=0.5, levels=5, linewidths=1.5)
-        plt.colorbar()
+        # sns.kdeplot(x = peak2[indices], y = peak1[indices], color='black',alpha=0.5, levels=7, linewidths=1.5)
+        sns.jointplot(x = peak2[indices], y = peak1[indices], kind="hex", gridsize=100, bins='log', cmap='inferno')
+        # plt.colorbar()
+        plt.ylim(bottom=0, top=1500)
+        plt.xlim(left=0, right=1500)
         plt.ylabel(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})')
         plt.xlabel(f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
 
         return plt
+    
+    # ------------------------------------------------------------------------
+    def generate_peaks_joint_plot(self,peak1,peak2,min1,max1,min2,max2):
+        """ 
+        Generate scatter plot of mean intensity of two regions of determined peaks of the two spectra
+        """
+        # Flatten the arrays
+        peak2 = peak2.flatten()
+        peak1 = peak1.flatten()
+        # Find indices of points that are non-zero
+        indices = np.where(np.logical_and(peak1 > 0, peak2 > 0))
+
+        # Generate the joint plot
+        joint_plot = sns.jointplot(x = peak2[indices], y = peak1[indices], kind="scatter", color='black', alpha=0.1)
+        joint_plot.ax_joint.set_xlim(0,1500)
+        joint_plot.ax_joint.set_ylim(0,1500)
+        joint_plot.set_axis_labels(f'Mean intensity of ER peak (CHs {min1+1}-{max1+1})',
+                                   f'Mean intensity of M peak (CHs {min2+1}-{max2+1})')
+        return joint_plot
     
     # ------------------------------------------------------------------------
     def generate_peaktounmixed_scatter_plot(self, indx_pixorg1, indx_pixorg2, indx_pixcontact):
@@ -672,4 +843,54 @@ class Spectra:
         
         return plt
     
+     # ------------------------------------------------------------------------
+    def generate_scatter_percell(self,cell_list,mask_filename,img_filename,min1,max1,min2,max2):
+        """ 
+       
+        """
+        for i in cell_list:
+            cellspix = self.pix_aligned_percell_seg_mask(i,mask_filename)
+            ERpeak_mix, Mpeak_mix = self.calc_peaks_mean(2,11,15,24,True,cellspix)
+            
+            # Create a figure and two subplots
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
+
+            # Generate the joint plot on ax1
+            plt.sca(ax1)  # Set the current axis to ax1
+            self.generate_peaks_scatter_plot(ERpeak_mix, Mpeak_mix, min1, max1, min2, max2)
+            
+            # Generate the ROI image on ax2
+            plt.sca(ax2)  # Set the current axis to ax2
+            self.ROI_in_image(cellspix, img_filename)
+
+
+            plt.tight_layout()
+        return plt  
     
+    # ------------------------------------------------------------------------
+    def generate_scatter_cell_list(self,cell_list,mask_filename,min1,max1,min2,max2):
+        """ 
+       
+        """
+        
+        cellspix = self.pix_aligned_cell_list_seg_mask(cell_list,mask_filename)
+        ERpeak_mix, Mpeak_mix = self.calc_peaks_mean(2,11,15,24,True,cellspix)
+ 
+        self.generate_peaks_joint_plot(ERpeak_mix, Mpeak_mix, min1, max1, min2, max2)
+
+        self.generate_peaks_hist2D_plot(ERpeak_mix, Mpeak_mix, min1, max1, min2, max2)
+        plt.show()
+
+    # ------------------------------------------------------------------------
+    def generate_scatter_cell_list_tif(self,cell_list,mask_filename,min1,max1,min2,max2):
+        """ 
+       
+        """
+        
+        cellspix = self.pix_aligned_cell_list_seg_mask(cell_list,mask_filename)
+        ERpeak_mix, Mpeak_mix = self.calc_peaks_mean_tif(2,11,15,24,True,cellspix)
+ 
+        self.generate_peaks_joint_plot(ERpeak_mix, Mpeak_mix, min1, max1, min2, max2)
+
+        self.generate_peaks_hist2D_plot(ERpeak_mix, Mpeak_mix, min1, max1, min2, max2)
+        plt.show()
